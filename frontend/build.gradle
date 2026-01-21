@@ -3,8 +3,23 @@ plugins {
 	id 'com.github.node-gradle.node' version '7.1.0'
 }
 
+task frontendNpmInstall(type: NpmTask) {
+  onlyIf {
+    !file("node_modules").exists()
+  }
+
+  args = ["install"]
+
+  inputs.files(
+    file("package.json"),
+    file("package-lock.json")
+  )
+  outputs.dir("node_modules")
+}
+
 task appNpmBuild(type: NpmTask) {
   args = ["run", "build"]
 }
 
 assemble.dependsOn(appNpmBuild)
+appNpmBuild.dependsOn(frontendNpmInstall)

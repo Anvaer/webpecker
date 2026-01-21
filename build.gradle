@@ -30,6 +30,7 @@ dependencies {
   }
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
+
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
@@ -42,11 +43,9 @@ task cleanWebApp(type: Delete) {
 	delete "$rootDir/build/resources/main/static/."
 }
 
-bootRun.dependsOn(copyWebApp)
-bootJar.dependsOn(copyWebApp)
+processResources.dependsOn(copyWebApp)
 copyWebApp.dependsOn(cleanWebApp)
-copyWebApp.dependsOn ":resolveMainClassName"
-compileJava.dependsOn ":frontend:build"
+cleanWebApp.dependsOn ":frontend:build"
 
 tasks.named('test') {
 	useJUnitPlatform()
