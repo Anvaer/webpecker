@@ -5,16 +5,19 @@
         <div class="w-full">
           <div class="flex text-left mx-2 mt-2">
             <div class="flex-1">
+              <Button
+                class="mr-2"
+                label="Load URLs"
+                severity="primary"
+                @click="viewUrlLoaderDialog = !viewUrlLoaderDialog"
+              />
               <UrlLoaderDialog
-                @loadUrlList="
+                v-model:viewDialog="viewUrlLoaderDialog"
+                @load-url-list="
                   (urlListPlain) => {
                     clear();
-                    urlList = urlListPlain
-                      .split('\n')
-                      .map((u) => u.trim())
-                      .filter((u) => u.length > 0)
-                      .filter((u) => isValidUrl(u))
-                      .slice(0, 100);
+                    buildUrlList(urlListPlain);
+                    resetUrlListState();
                   }
                 "
               />
@@ -22,21 +25,26 @@
                 class="mr-2"
                 label="Start"
                 severity="success"
-                :disabled="urlOptions.length === 0 || testIsRunning"
-                @click="() => execRequests()"
+                :disabled="urlList.length === 0 || testIsRunning"
+                @click="
+                  () => {
+                    clear();
+                    execRequests();
+                  }
+                "
               />
               <Button
                 class="mr-2"
                 label="Stop"
                 severity="danger"
-                :disabled="urlOptions.length === 0 || !testIsRunning"
-                @click="stop()"
+                :disabled="urlList.length === 0 || !testIsRunning"
+                @click="stopRequestLoop()"
               />
               <Button
                 class="mr-2"
                 label="Clear"
                 severity="warn"
-                :disabled="urlOptions.length === 0 || testIsRunning"
+                :disabled="urlList.length === 0 || testIsRunning"
                 @click="clear()"
               />
               <Button
@@ -55,103 +63,18 @@
                 severity="info"
                 @click="showSettings = true"
               />
-              <Dialog
-                v-model:visible="showSettings"
-                header="Settings"
-                base-z-index="9999"
-                position="center"
-                :modal="true"
-                :draggable="false"
-                :dismissable-mask="true"
-              >
-                <InputGroup class="mb-3">
-                  <InputGroupAddon class="input-group-label">
-                    Number of iterations for each URL
-                    <Message v-if="testIsRunning" severity="warn">
-                      Unable to change while measurement is running
-                    </Message>
-                  </InputGroupAddon>
-                  <InputNumber v-model="repeat" :disabled="testIsRunning" />
-                </InputGroup>
-                <InputGroup class="mb-3">
-                  <InputGroupAddon class="input-group-label">
-                    Delay between requests
-                  </InputGroupAddon>
-                  <InputNumber v-model="delay" suffix=" ms" />
-                </InputGroup>
-                <InputGroup class="mb-3">
-                  <InputGroupAddon class="input-group-label">
-                    Timeout
-                  </InputGroupAddon>
-                  <InputNumber v-model="timeout" suffix=" ms" />
-                </InputGroup>
-                <InputGroup>
-                  <InputGroupAddon class="input-group-label">
-                    Max number of concurrent requests
-                  </InputGroupAddon>
-                  <InputNumber v-model="maxConcurrent" />
-                </InputGroup>
-              </Dialog>
+              <SettingsDialog
+                v-model:viewDialog="showSettings"
+                v-model:settings="settings"
+                :test-is-running="testIsRunning"
+              />
             </div>
           </div>
-          <Listbox
-            v-model="selectedUrl"
-            :options="urlOptions"
-            multiple
-            optionLabel="name"
-            optionValue="id"
-            class="block m-2"
-            scrollHeight="calc(100vh - 60px)"
-          >
-            <template #option="item">
-              <div class="w-full">
-                <div class="block text-left mb-2">
-                  {{ "#" + item.option.id + " " + item.option.name }}
-                </div>
-                <div class="flex status-bar">
-                  <div class="flex-1 text-left" style="line-height: 21px">
-                    {{ item.option.reqDone }} / {{ item.option.reqTotal }}
-                  </div>
-                  <div class="flex-1 text-right font-weight-bold">
-                    {{ item.option.state }}
-                    <Button
-                      v-if="item.option.state === 'running'"
-                      class="ml-3 very-small-button"
-                      icon="pi pi-times"
-                      severity="danger"
-                      rounded
-                      aria-label="Stop"
-                      @click="
-                        (e) => {
-                          stop(item.option.id);
-                          e.stopPropagation();
-                        }
-                      "
-                    />
-                  </div>
-                </div>
-                <div class="block">
-                  <ProgressBar
-                    :value="
-                      item.option.reqTotal > 0
-                        ? Math.floor(
-                            (item.option.reqDone * 100) / item.option.reqTotal
-                          )
-                        : 0
-                    "
-                    :pt="{
-                      value: () => ({
-                        style: {
-                          backgroundColor:
-                            PROGRESS_BAR_COLORS[item.option.state],
-                        },
-                      }),
-                    }"
-                  />
-                </div>
-              </div>
-            </template>
-          </Listbox>
+          <UrlList
+            v-model:selectedUrl="selectedUrl"
+            :urlList="urlList"
+            @stop-request-loop="(id) => stopRequestLoop(id)"
+          />
         </div>
       </SplitterPanel>
       <SplitterPanel class="flex items-center justify-center">
@@ -165,35 +88,7 @@
             <div id="stages-chart" style="width: 40%; height: 100%" />
           </SplitterPanel>
           <SplitterPanel class="flex items-center justify-center">
-            <DataTable
-              :value="tableData"
-              :data-key="id"
-              :scrollable="true"
-              scroll-height="100%"
-              class="flex-1"
-            >
-              <Column field="id" header="#" sortable></Column>
-              <Column field="url" header="URL" sortable>
-                <template #body="props">
-                  <span>
-                    {{
-                      urlOptions.find(
-                        (u) => parseInt(u.id) === parseInt(props.data.id)
-                      )?.value
-                    }}
-                  </span>
-                </template>
-              </Column>
-              <Column field="count" header="Successful" sortable></Column>
-              <Column field="countError" header="Failed" sortable></Column>
-              <Column field="mean" header="Mean" sortable></Column>
-              <Column field="median" header="Median" sortable></Column>
-              <Column
-                field="trimmedMean"
-                header="Trimmed Mean"
-                sortable
-              ></Column
-            ></DataTable>
+            <ResultsTable :tableData="tableData" :urlList="urlList" />
           </SplitterPanel>
         </Splitter>
       </SplitterPanel>
@@ -202,20 +97,7 @@
 </template>
 
 <script>
-import {
-  Button,
-  Listbox,
-  SplitterPanel,
-  Splitter,
-  ProgressBar,
-  InputNumber,
-  InputGroup,
-  InputGroupAddon,
-  Message,
-  DataTable,
-  Column,
-  Dialog,
-} from "primevue";
+import { Button, SplitterPanel, Splitter } from "primevue";
 import { computed, ref, watch, onMounted } from "vue";
 import { useWebSocket } from "./websocket.api";
 import { useMeasurementData } from "./measurement-data";
@@ -223,46 +105,37 @@ import { useReposneTimeChart } from "./chart-resp-time";
 import { useDistributionChart } from "./chart-distribution";
 import { useStagesChart } from "./chart-stages";
 import UrlLoaderDialog from "./components/UrlLoaderDialog.vue";
+import ResultsTable from "./components/ResultsTable.vue";
+import UrlList from "./components/UrlList.vue";
+import SettingsDialog from "./components/SettingsDialog.vue";
 
 export default {
   name: "App",
   components: {
     Button,
-    Listbox,
     SplitterPanel,
     Splitter,
-    ProgressBar,
-    Dialog,
-    InputNumber,
-    InputGroup,
-    InputGroupAddon,
-    Message,
-    DataTable,
-    Column,
     UrlLoaderDialog,
+    ResultsTable,
+    UrlList,
+    SettingsDialog,
   },
   setup() {
     const UPDATE_INTERVAL = 1000;
-    const PROGRESS_BAR_COLORS = {
-      "not-started": "#6c757d",
-      running: "#ffc107",
-      done: "#28a745",
-      failed: "#dc3545",
-      cancelled: "#6c757d",
-    };
 
+    const viewUrlLoaderDialog = ref(false);
     const showSettings = ref(false);
 
     const urlList = ref([]);
 
-    const repeat = ref(1000);
-    const delay = ref(10);
-    const timeout = ref(600);
-    const maxConcurrent = ref(3);
+    const settings = ref({
+      repeat: 1000,
+      delay: 10,
+      timeout: 600,
+      maxConcurrent: 3,
+    });
 
     const selectedUrl = ref(null);
-    const state = ref({});
-    const iteration = ref({});
     const tableData = ref([]);
 
     let intervalId = null;
@@ -273,10 +146,10 @@ export default {
         sendMessage(
           JSON.stringify({
             action: "update-config",
-            maxConcurrent: maxConcurrent.value,
-            timeout: timeout.value,
-            delay: delay.value,
-          })
+            maxConcurrent: settings.value.maxConcurrent,
+            timeout: settings.value.timeout,
+            delay: settings.value.delay,
+          }),
         );
       },
     });
@@ -284,11 +157,11 @@ export default {
     // event data
     const measurementData = useMeasurementData();
     const msgListner = (m) => {
-      const point = JSON.parse(m.data);
-      if (point.state) state.value[point.id] = point.state;
-      if (point.iteration) iteration.value[point.id] = point.iteration;
-      if (point.event) {
-        measurementData.addMeasurementPoint(point);
+      const msgs = JSON.parse(m.data);
+      for (let msg of msgs) {
+        if (msg.state) urlList.value[msg.id].state = msg.state;
+        if (msg.event) measurementData.addMeasurementPoint(msg);
+        else if (msg.iteration) urlList.value[msg.id].iteration = msg.iteration;
       }
     };
 
@@ -296,7 +169,7 @@ export default {
     const rtChart = useReposneTimeChart("response-time-chart", measurementData);
     const distrChart = useDistributionChart(
       "distribution-chart",
-      measurementData
+      measurementData,
     );
     const stagesChart = useStagesChart("stages-chart", measurementData);
     onMounted(() => {
@@ -313,6 +186,7 @@ export default {
       updateCharts(newVal);
     });
 
+    // list building
     const isValidUrl = (u) => {
       try {
         new URL(u);
@@ -323,75 +197,83 @@ export default {
       }
     };
 
-    watch(
-      urlList,
-      (newList) => {
-        newList.forEach((u, id) => (state.value[id] = "not started"));
-      },
-      { immediate: true }
-    );
+    const buildUrlList = (urlListPlain) => {
+      const list = urlListPlain
+        .split("\n")
+        .map((u) => u.trim())
+        .filter((u) => u.length > 0)
+        .filter((u) => isValidUrl(u))
+        .slice(0, 100);
+      urlList.value.splice(0);
+      urlList.value.push(
+        ...list.map((url, id) => ({
+          id,
+          name: url,
+          value: url,
+        })),
+      );
+    };
 
-    const urlOptions = computed(() =>
+    const resetUrlListState = () => {
+      urlList.value.forEach((url) => {
+        url.state = "not started";
+        url.iteration = 0;
+        url.total = settings.value.repeat;
+      });
+    };
+
+    const buildRequests = () =>
       urlList.value.map((url, id) => ({
         id,
-        name: url,
-        value: url,
-        state: state.value[id],
-        reqDone: iteration.value[id] ?? 0,
-        reqTotal: repeat.value,
-      }))
-    );
-
-    const urlRequests = computed(() =>
-      urlOptions.value.map((item, id) => ({
-        id,
-        url: item.value,
-        repeat: repeat.value,
+        url: url.value,
+        repeat: settings.value.repeat,
         action: "send-request",
-      }))
-    );
+      }));
 
-    watch([delay, maxConcurrent, timeout], ([d, mc, t]) => {
+    watch(settings, (newS) => {
+      console.log(newS);
       sendMessage(
         JSON.stringify({
           action: "update-config",
-          delay: d,
-          maxConcurrent: mc,
-          timeout: t,
-        })
+          delay: newS.delay,
+          maxConcurrent: newS.maxConcurrent,
+          timeout: newS.timeout,
+        }),
       );
     });
 
     // actions
     const execRequests = () => {
-      clear();
-      urlRequests.value.forEach((req) => {
+      buildRequests(urlList.value).forEach((req) => {
         sendMessage(JSON.stringify(req));
       });
     };
 
-    const stop = (id) => {
+    const stopRequestLoop = (id) => {
       sendMessage(JSON.stringify({ action: "cancel-request", id }));
     };
 
     const clear = () => {
-      urlList.value.forEach((u, id) => (state.value[id] = "not started"));
-      Object.keys(iteration.value).forEach((k) => (iteration.value[k] = 0));
+      resetUrlListState();
       measurementData.clearData();
       updateCharts();
     };
 
     const testIsRunning = computed(() => {
-      return Object.values(state.value).some((s) => s === "running");
+      return urlList.value.some((url) => url.state === "running");
     });
 
     const updateAll = () => {
       rtChart.updateData(selectedUrl.value);
       distrChart.updateData(selectedUrl.value);
       stagesChart.updateData(selectedUrl.value);
-      tableData.value = measurementData.getTableData(
-        urlOptions.value.map((o) => o.value)
-      );
+      tableData.value = measurementData
+        .getTableData(urlList.value.map((o) => o.value))
+        .map((url) => ({
+          ...url,
+          url: urlList.value.find((u) => parseInt(u.id) === parseInt(url.id))
+            ?.value,
+        }));
     };
 
     watch(testIsRunning, (isRunning) => {
@@ -401,26 +283,22 @@ export default {
         intervalId = null;
       } else if (isRunning)
         intervalId = setInterval(() => {
-          console.log("updating vals");
           updateAll();
         }, UPDATE_INTERVAL);
     });
 
     return {
-      PROGRESS_BAR_COLORS,
+      viewUrlLoaderDialog,
       showSettings,
-      delay,
-      repeat,
-      timeout,
+      settings,
       tableData,
-      maxConcurrent,
-      state,
       isValidUrl,
       urlList,
-      urlOptions,
+      buildUrlList,
+      resetUrlListState,
       selectedUrl,
       testIsRunning,
-      stop,
+      stopRequestLoop,
       clear,
       execRequests,
       sendMessage,

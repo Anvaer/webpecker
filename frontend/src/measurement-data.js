@@ -41,7 +41,7 @@ export const useMeasurementData = () => {
     selectedId,
     measurement,
     aggrFunc = [(v) => v + 1],
-    initVals = [0]
+    initVals = [0],
   ) => {
     const res = aggrFunc.map(() => ({}));
     if (!Array.isArray(initVals)) initVals = aggrFunc.map(() => initVals);
@@ -93,7 +93,7 @@ export const useMeasurementData = () => {
             while (stageEndList[j] && val[2] > stageEndList[j][2]) j++;
             if (!stageEndList[j]) return;
             // gathering only successful calls
-            if (stageEndList[j][3] === 0) {
+            if (stageEndList[j][3] === 0 && val[1] < stageEndList[j][1]) {
               res.push(stageEndList[j][1] - val[1]);
             }
             j++;
@@ -114,7 +114,7 @@ export const useMeasurementData = () => {
             return a;
           },
         ],
-        []
+        [],
       );
       const responseTimesData = Object.values(respTimes).flatMap((i) => i);
 
@@ -127,7 +127,7 @@ export const useMeasurementData = () => {
             return a;
           },
         ],
-        []
+        [],
       );
 
       const failedCallsData = Object.values(failedCalls).flatMap((i) => i);
@@ -145,11 +145,11 @@ export const useMeasurementData = () => {
         if (values.length === 0) return;
         const sortedValues = values.sort();
         const trimCount = Math.floor(
-          sortedValues.length * ((trimPercent / 2) * 0.01)
+          sortedValues.length * ((trimPercent / 2) * 0.01),
         );
         const trimmedValues = sortedValues.slice(
           trimCount,
-          sortedValues.length - trimCount
+          sortedValues.length - trimCount,
         );
         if (!trimmedValues.length) return null;
         const sum = trimmedValues.reduce((acc, value) => acc + value, 0);
@@ -165,7 +165,7 @@ export const useMeasurementData = () => {
           responseTimesData.length > 0
             ? Math.round(
                 responseTimesData.reduce((a, c) => a + c, 0) /
-                  responseTimesData.length
+                  responseTimesData.length,
               )
             : undefined,
         median: median(responseTimesData),

@@ -126,7 +126,7 @@ export const useStagesChart = (htmlContainerId, measurementData) => {
               return a;
             },
           ],
-          []
+          [],
         );
         const ttfbFlat = Object.values(ttfb).flatMap((i) => i);
         stageSum = ttfbFlat.reduce((a, c) => a + c, 0);
@@ -158,12 +158,13 @@ export const useStagesChart = (htmlContainerId, measurementData) => {
     indent[0] = 0;
     indent[1] = stageDur[0];
     indent[2] = indent[1] + stageDur[1];
-    indent[3] = indent[2] + stageDur[2] - stageDur[3];
+    indent[3] = Math.max(indent[2] + stageDur[2] - stageDur[3], 0);
     indent[4] = 0;
     indent[5] = stageDur[4];
     indent[6] = indent[5] + stageDur[5];
 
     stagesChart.setOption({
+      animation: false,
       series: [
         {
           data: indent,

@@ -1,18 +1,13 @@
 <template>
-  <Button
-    class="mr-2"
-    label="Load URLs"
-    severity="primary"
-    @click="viewDialog = !viewDialog"
-  />
   <Dialog
-    v-model:visible="viewDialog"
+    :visible="viewDialog"
     header="URL List"
     base-z-index="9999"
     position="center"
     :modal="true"
     :draggable="false"
     :dismissable-mask="true"
+    @update:visible="() => $emit('update:viewDialog', false)"
   >
     <Message class="mb-3" severity="warn">
       Maximum 100 valid URLs are allowed
@@ -34,8 +29,8 @@
           class="mr-2"
           @click="
             () => {
-              $emit('loadUrlList', urlListPlain);
-              viewDialog = false;
+              $emit('load-url-list', urlListPlain);
+              $emit('update:viewDialog', false);
             }
           "
         ></Button>
@@ -43,7 +38,7 @@
           type="button"
           label="Cancel"
           severity="secondary"
-          @click="viewDialog = false"
+          @click="() => $emit('update:viewDialog', false)"
         ></Button>
       </div>
       <div class="flex">
@@ -67,15 +62,20 @@ import { ref } from "vue";
 export default {
   name: "UrlLoaderDialog",
   components: { Dialog, Message, Button, FileUpload, Textarea },
-  props: {},
-  emits: ["loadUrlList"],
+  emits: ["update:viewDialog", "load-url-list"],
+  props: {
+    viewDialog: {
+      type: Boolean,
+      default() {
+        return false;
+      },
+    },
+  },
   setup() {
     const urlListPlain = ref(
       `https://google.com
-https://www.bing.com/`
+https://www.bing.com/`,
     );
-
-    const viewDialog = ref(false);
 
     const uploadUrls = (ev) => {
       const file = ev.files[0];
@@ -90,7 +90,6 @@ https://www.bing.com/`
 
     return {
       urlListPlain,
-      viewDialog,
       uploadUrls,
     };
   },

@@ -108,13 +108,13 @@ export const useReposneTimeChart = (htmlContainerId, measurementData) => {
     const [successCalls, rtSum] = measurementData.getAggregatedData(
       selectedUrl,
       "callEnd",
-      [(a) => a + 1, (a, v) => a + v]
+      [(a) => a + 1, (a, v) => a + v],
     );
 
     const [failedCalls] = measurementData.getAggregatedData(
       selectedUrl,
       "callFailed",
-      [(a) => a + 1]
+      [(a) => a + 1],
     );
 
     successCallsData.splice(0);
@@ -129,6 +129,7 @@ export const useReposneTimeChart = (htmlContainerId, measurementData) => {
     });
 
     rtChart.setOption({
+      animation: false,
       series: [
         {
           data: successCallsData,

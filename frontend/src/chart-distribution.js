@@ -90,7 +90,7 @@ export const useDistributionChart = (htmlContainerId, measurementData) => {
     if (selectedUrl.length === 0) selectedUrl = [null];
 
     Object.keys(responseTimesData).forEach(
-      (id) => delete responseTimesData[id]
+      (id) => delete responseTimesData[id],
     );
     Object.keys(bucketsArray).forEach((id) => delete bucketsArray[id]);
 
@@ -104,7 +104,7 @@ export const useDistributionChart = (htmlContainerId, measurementData) => {
             return a;
           },
         ],
-        []
+        [],
       );
 
       responseTimesData[id] = Object.values(respTimes).flatMap((i) => i);
@@ -113,18 +113,18 @@ export const useDistributionChart = (htmlContainerId, measurementData) => {
     });
 
     const allResponseTimesData = Object.values(responseTimesData).flatMap(
-      (i) => i
+      (i) => i,
     );
 
     const intervals = [];
     const min = allResponseTimesData.reduce((a, b) => Math.min(a, b), Infinity);
     const max = allResponseTimesData.reduce(
       (a, b) => Math.max(a, b),
-      -Infinity
+      -Infinity,
     );
     const responseTimeDataMaxLength = Object.values(responseTimesData).reduce(
       (a, c) => (c.length > a ? c.length : a),
-      -Infinity
+      -Infinity,
     );
     const bucketCount = Math.ceil(Math.sqrt(responseTimeDataMaxLength));
     const bucketSize = (max - min) / bucketCount;
@@ -138,22 +138,23 @@ export const useDistributionChart = (htmlContainerId, measurementData) => {
       bucketNamesArray.push(
         `${smartDecimal(rangeStart, bucketSize)} - ${smartDecimal(
           rangeEnd,
-          bucketSize
-        )}`
+          bucketSize,
+        )}`,
       );
     }
     Object.keys(responseTimesData).forEach((id) =>
       responseTimesData[id].forEach((value) => {
         const index = Math.min(
           Math.floor((value - min) / bucketSize),
-          bucketCount - 1
+          bucketCount - 1,
         );
         bucketsArray[id][index]++;
-      })
+      }),
     );
 
     distrChart.setOption(
       {
+        animation: false,
         xAxis: [
           {
             data: bucketNamesArray,
@@ -180,7 +181,7 @@ export const useDistributionChart = (htmlContainerId, measurementData) => {
         ? {
             replaceMerge: ["series"],
           }
-        : undefined
+        : undefined,
     );
 
     lastSeenIds.splice(0);
