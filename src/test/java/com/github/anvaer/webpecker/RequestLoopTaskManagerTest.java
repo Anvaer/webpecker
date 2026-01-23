@@ -1,166 +1,212 @@
 package com.github.anvaer.webpecker;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
-import java.util.concurrent.Future;
-
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.MockedConstruction;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.socket.WebSocketSession;
-
 import com.github.anvaer.webpecker.httpclient.HttpClient;
+import com.github.anvaer.webpecker.requestloop.RequestLoopTask;
+import com.github.anvaer.webpecker.requestloop.RequestLoopTaskManager;
+import com.github.anvaer.webpecker.websocket.WebSocketHelper;
 import com.github.anvaer.webpecker.websocket.WebSocketRequest;
 
-@ExtendWith(MockitoExtension.class)
+import org.junit.jupiter.api.*;
+import org.mockito.MockedStatic;
+import org.springframework.web.socket.WebSocketSession;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
+
 class RequestLoopTaskManagerTest {
 
-  @Mock
+  RequestLoopTaskManager manager;
   HttpClient httpClient;
-
-  @Mock
   WebSocketSession session;
 
-  @Mock
-  WebSocketRequest request;
+  @BeforeEach
+  void setUp() {
+    httpClient = mock(HttpClient.class);
+    session = mock(WebSocketSession.class);
+    manager = new RequestLoopTaskManager(httpClient);
 
-  RequestLoopTaskManager manager;
+    // setFieldVisible(manager, "futures");
+    // setFieldVisible(manager, "tasks");
+  }
 
   @AfterEach
   void tearDown() {
-    if (manager != null) {
-      manager.shutdown();
+    manager.shutdown();
+  }
+
+  @Test
+  void testSubmitRequest_createsTaskAndFuture() {
+    WebSocketRequest req = mock(WebSocketRequest.class);
+    when(req.getId()).thenReturn(1);
+    when(req.getRepeat()).thenReturn(5);
+    when(req.getUrl()).thenReturn("http://example.com");
+
+    manager.submitRequest(req, session);
+
+    Future<?> future = getFutures(manager).get(1);
+    assertNotNull(future);
+
+    assertTrue(getTasks(manager).containsKey(1));
+  }
+
+  @Test
+  void testCancelRequest_byId_cancelsTaskAndFuture() {
+    WebSocketRequest req = mock(WebSocketRequest.class);
+    when(req.getId()).thenReturn(2);
+    when(req.getRepeat()).thenReturn(1);
+    when(req.getUrl()).thenReturn("http://example.com");
+
+    manager.submitRequest(req, session);
+
+    assertTrue(getTasks(manager).containsKey(2));
+    assertTrue(getFutures(manager).containsKey(2));
+
+    manager.cancelRequest(2);
+
+    assertFalse(getTasks(manager).containsKey(2));
+    assertFalse(getFutures(manager).containsKey(2));
+  }
+
+  @Test
+  void testCancelRequest_all_cancelsEverything() {
+    WebSocketRequest req1 = mock(WebSocketRequest.class);
+    when(req1.getId()).thenReturn(1);
+    when(req1.getRepeat()).thenReturn(1);
+    when(req1.getUrl()).thenReturn("http://example.com");
+
+    WebSocketRequest req2 = mock(WebSocketRequest.class);
+    when(req2.getId()).thenReturn(2);
+    when(req2.getRepeat()).thenReturn(1);
+    when(req2.getUrl()).thenReturn("http://example.org");
+
+    manager.submitRequest(req1, session);
+    manager.submitRequest(req2, session);
+
+    manager.cancelRequest(null); // cancel all
+
+    assertTrue(getTasks(manager).isEmpty());
+    assertTrue(getFutures(manager).isEmpty());
+  }
+
+  @Test
+  void testUpdateConfig_changesDelayMaxConcurrentAndTimeout() {
+    WebSocketRequest req = mock(WebSocketRequest.class);
+    when(req.getDelay()).thenReturn(200L);
+    when(req.getMaxConcurrent()).thenReturn(5);
+    when(req.getTimeout()).thenReturn(999L);
+
+    manager.updateConfig(req);
+
+    assertEquals(200, getLong(manager, "delay"));
+    assertEquals(5, getInt(manager, "maxConcurrent"));
+
+    verify(httpClient).changeTimeout(999L);
+  }
+
+  @Test
+  void testRestoreSettings_callsWebSocketHelper() {
+    MockedStatic<WebSocketHelper> helperMock = mockStatic(WebSocketHelper.class);
+    try {
+      manager.restoreSettings(session);
+
+      helperMock.verify(() -> WebSocketHelper.restoreState(
+          eq(session),
+          anyString()));
+    } finally {
+      helperMock.close();
     }
   }
 
   @Test
-  void submitRequest_createsTaskAndSubmitsToExecutor() {
-    when(request.getId()).thenReturn(1);
-    when(request.getRepeat()).thenReturn(5);
-    when(request.getUrl()).thenReturn("http://example.com");
+  void testRestoreState_callsWebSocketHelper() throws Exception {
+    WebSocketRequest req = mock(WebSocketRequest.class);
+    when(req.getId()).thenReturn(1);
+    when(req.getRepeat()).thenReturn(1);
+    when(req.getUrl()).thenReturn("http://example.com");
+    manager.submitRequest(req, session);
 
-    try (MockedConstruction<RequestLoopTask> construction = mockConstruction(RequestLoopTask.class)) {
+    try (var helperMock = mockStatic(WebSocketHelper.class)) {
+      manager.restoreState(session);
 
-      manager = new RequestLoopTaskManager(httpClient);
-      manager.submitRequest(request, session);
-
-      // One RequestLoopTask should have been constructed
-      assertEquals(1, construction.constructed().size());
-
-      RequestLoopTask task = construction.constructed().get(0);
-      verifyNoInteractions(task); // not cancelled, no delay update yet
+      helperMock.verify(() -> WebSocketHelper.restoreState(eq(session), anyString()));
     }
   }
 
   @Test
-  void cancelRequest_withId_cancelsOnlyThatTask() {
-    when(request.getId()).thenReturn(42);
-    when(request.getRepeat()).thenReturn(1);
-    when(request.getUrl()).thenReturn("http://example.com");
+  void testShutdown_clearsTasksAndFutures() {
+    WebSocketRequest req = mock(WebSocketRequest.class);
+    when(req.getId()).thenReturn(1);
+    when(req.getRepeat()).thenReturn(1);
+    when(req.getUrl()).thenReturn("http://example.com");
 
-    try (MockedConstruction<RequestLoopTask> construction = mockConstruction(RequestLoopTask.class)) {
+    manager.submitRequest(req, session);
 
-      manager = new RequestLoopTaskManager(httpClient);
-      manager.submitRequest(request, session);
+    manager.shutdown();
 
-      RequestLoopTask task = construction.constructed().get(0);
+    assertTrue(getTasks(manager).isEmpty());
+    assertTrue(getFutures(manager).isEmpty());
+    assertTrue(getExecutor(manager).isShutdown());
+  }
 
-      manager.cancelRequest(42);
-
-      verify(task).cancelCall();
+  private static Object getPrivate(Object target, String fieldName) {
+    try {
+      var field = RequestLoopTaskManager.class.getDeclaredField(fieldName);
+      field.setAccessible(true);
+      return field;
+    } catch (NoSuchFieldException e) {
+      throw new RuntimeException(e);
     }
   }
 
-  @Test
-  void cancelRequest_withNull_cancelsAllTasks() {
-    WebSocketRequest request1 = mock(WebSocketRequest.class);
-    WebSocketRequest request2 = mock(WebSocketRequest.class);
-
-    when(request1.getId()).thenReturn(1);
-    when(request1.getRepeat()).thenReturn(1);
-    when(request1.getUrl()).thenReturn("http://one");
-
-    when(request2.getId()).thenReturn(2);
-    when(request2.getRepeat()).thenReturn(1);
-    when(request2.getUrl()).thenReturn("http://two");
-
-    try (MockedConstruction<RequestLoopTask> construction = mockConstruction(RequestLoopTask.class)) {
-
-      manager = new RequestLoopTaskManager(httpClient);
-      manager.submitRequest(request1, session);
-      manager.submitRequest(request2, session);
-
-      manager.cancelRequest(null);
-
-      for (RequestLoopTask task : construction.constructed()) {
-        verify(task).cancelCall();
-      }
+  @SuppressWarnings("unchecked")
+  private static Map<Integer, Future<?>> getFutures(RequestLoopTaskManager manager) {
+    try {
+      return (Map<Integer, Future<?>>) getPrivate(manager, "futures");
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
   }
 
-  @Test
-  void updateConfig_updatesDelayOnExistingTasks() {
-    when(request.getId()).thenReturn(1);
-    when(request.getRepeat()).thenReturn(1);
-    when(request.getUrl()).thenReturn("http://example.com");
-
-    WebSocketRequest configUpdate = mock(WebSocketRequest.class);
-    when(configUpdate.getDelay()).thenReturn(500L);
-
-    try (MockedConstruction<RequestLoopTask> construction = mockConstruction(RequestLoopTask.class)) {
-
-      manager = new RequestLoopTaskManager(httpClient);
-      manager.submitRequest(request, session);
-
-      RequestLoopTask task = construction.constructed().get(0);
-
-      manager.updateConfig(configUpdate);
-
-      verify(task).setDelay(500L);
+  @SuppressWarnings("unchecked")
+  private static Map<Integer, RequestLoopTask> getTasks(RequestLoopTaskManager manager) {
+    try {
+      return (Map<Integer, RequestLoopTask>) getPrivate(manager, "tasks");
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
   }
 
-  @Test
-  void updateConfig_updatesMaxConcurrent() {
-    WebSocketRequest configUpdate = mock(WebSocketRequest.class);
-    when(configUpdate.getMaxConcurrent()).thenReturn(3);
-
-    manager = new RequestLoopTaskManager(httpClient);
-
-    // should not throw
-    manager.updateConfig(configUpdate);
+  @SuppressWarnings("unchecked")
+  private static ThreadPoolExecutor getExecutor(RequestLoopTaskManager manager) {
+    try {
+      return (ThreadPoolExecutor) getPrivate(manager, "executor");
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 
-  @Test
-  void updateConfig_updatesHttpClientTimeout() {
-    WebSocketRequest configUpdate = mock(WebSocketRequest.class);
-    when(configUpdate.getTimeout()).thenReturn(10_000);
-
-    manager = new RequestLoopTaskManager(httpClient);
-    manager.updateConfig(configUpdate);
-
-    verify(httpClient).changeTimeout(10_000);
+  @SuppressWarnings("unchecked")
+  private static int getInt(RequestLoopTaskManager manager, String fieldName) {
+    try {
+      return (int) getPrivate(manager, fieldName);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 
-  @Test
-  void shutdown_clearsTasksAndStopsExecutor() {
-    when(request.getId()).thenReturn(1);
-    when(request.getRepeat()).thenReturn(1);
-    when(request.getUrl()).thenReturn("http://example.com");
-
-    try (MockedConstruction<RequestLoopTask> construction = mockConstruction(RequestLoopTask.class)) {
-
-      manager = new RequestLoopTaskManager(httpClient);
-      manager.submitRequest(request, session);
-
-      manager.shutdown();
-
-      // Calling shutdown twice should be safe
-      assertDoesNotThrow(() -> manager.shutdown());
+  @SuppressWarnings("unchecked")
+  private static long getLong(RequestLoopTaskManager manager, String fieldName) {
+    try {
+      return (long) getPrivate(manager, fieldName);
+    } catch (Exception e) {
+      throw new RuntimeException(e);
     }
   }
 }
