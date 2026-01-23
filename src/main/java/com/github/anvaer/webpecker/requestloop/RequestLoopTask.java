@@ -18,8 +18,10 @@ public class RequestLoopTask implements Callable<Void> {
 
   private final Integer id;
   private long delay;
+  private int currentIteration;
   private final int repeat;
   private final String url;
+  private String state;
   private final WebSocketSession webSocketSession;
   private final HttpClient httpClient;
 
@@ -35,55 +37,69 @@ public class RequestLoopTask implements Callable<Void> {
       HttpClient httpClient) {
     this.id = id;
     this.delay = delay;
+    this.currentIteration = 0;
     this.repeat = Optional.ofNullable(repeat).orElse(1);
     this.url = url;
+    this.state = "Not started";
     this.webSocketSession = webSocketSession;
     this.httpClient = httpClient;
   }
 
   @Override
   public Void call() {
-    int i = 0;
-    WebSocketHelper.updateState(webSocketSession, id, "running");
-    while (i < repeat) {
+    updateState("running");
+    while (currentIteration < repeat) {
       if (Thread.currentThread().isInterrupted()) {
-        WebSocketHelper.updateState(webSocketSession, id, "cancelled");
+        updateState("cancelled");
         break;
       }
       try {
-        i++;
-        call = httpClient.getRequest(url, "\"id\":%d,\"iteration\":%d".formatted(id, i));
+        currentIteration++;
+        call = httpClient.getRequest(url, "\"id\":%d,\"iteration\":%d".formatted(id, currentIteration));
         Response resp = call.execute();
         resp.close();
-        WebSocketHelper.updateIteration(webSocketSession, id, i, String.valueOf(resp.code()));
+        registerIterationResult(String.valueOf(resp.code()));
       } catch (IOException e) {
         if (cancelled) {
-          WebSocketHelper.updateState(webSocketSession, id, "cancelled");
+          updateState("cancelled");
           return null;
         } else if (e instanceof SocketTimeoutException) {
-          WebSocketHelper.updateIteration(webSocketSession, id, i, "timeout:connect/read");
+          registerIterationResult("timeout:connect/read");
         } else if (e instanceof InterruptedIOException) {
-          WebSocketHelper.updateIteration(webSocketSession, id, i, "timeout");
+          registerIterationResult("timeout");
         } else if (e instanceof IOException) {
-          WebSocketHelper.updateIteration(webSocketSession, id, i, "network error");
+          registerIterationResult("network error");
         }
       }
       if (!cancelled && !Thread.currentThread().isInterrupted() && delay > 0) {
         try {
           Thread.sleep(delay);
         } catch (InterruptedException e) {
-          WebSocketHelper.updateState(webSocketSession, id, "cancelled");
+          updateState("cancelled");
           Thread.currentThread().interrupt();
           return null;
         }
       }
     }
-    WebSocketHelper.updateState(webSocketSession, id, "done");
+    updateState("done");
     return null;
+  }
+
+  private void updateState(String state) {
+    this.state = state;
+    WebSocketHelper.updateState(webSocketSession, id, this.state);
+  }
+
+  private void registerIterationResult(String result) {
+    WebSocketHelper.updateIteration(webSocketSession, id, currentIteration, result);
   }
 
   public void setDelay(long delay) {
     this.delay = delay;
+  }
+
+  public RequestLoopTaskState getState() {
+    return new RequestLoopTaskState(id, delay, currentIteration, repeat, url, state);
   }
 
   public void cancelCall() {

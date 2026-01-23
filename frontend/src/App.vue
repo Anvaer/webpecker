@@ -15,6 +15,7 @@
                 v-model:viewDialog="viewUrlLoaderDialog"
                 @load-url-list="
                   (urlListPlain) => {
+                    stopRequestLoop();
                     clear();
                     buildUrlList(urlListPlain);
                     resetUrlListState();
@@ -121,7 +122,7 @@ export default {
     SettingsDialog,
   },
   setup() {
-    const UPDATE_INTERVAL = 1000;
+    const UPDATE_INTERVAL_MS = 25;
 
     const viewUrlLoaderDialog = ref(false);
     const showSettings = ref(false);
@@ -145,12 +146,17 @@ export default {
       onOpen: () => {
         sendMessage(
           JSON.stringify({
-            action: "update-config",
-            maxConcurrent: settings.value.maxConcurrent,
-            timeout: settings.value.timeout,
-            delay: settings.value.delay,
+            action: "restore-state",
           }),
         );
+        // sendMessage(
+        //   JSON.stringify({
+        //     action: "update-config",
+        //     maxConcurrent: settings.value.maxConcurrent,
+        //     timeout: settings.value.timeout,
+        //     delay: settings.value.delay,
+        //   }),
+        // );
       },
     });
 
@@ -159,9 +165,15 @@ export default {
     const msgListner = (m) => {
       const msgs = JSON.parse(m.data);
       for (let msg of msgs) {
-        if (msg.state) urlList.value[msg.id].state = msg.state;
-        if (msg.event) measurementData.addMeasurementPoint(msg);
-        else if (msg.iteration) urlList.value[msg.id].iteration = msg.iteration;
+        // array in msg only exists for restore state
+        if (msg.maxConcurrent) restoreSettings(msg);
+        else if (Array.isArray(msg)) restoreUrlListState(msg);
+        else if (urlList.value?.length > 0) {
+          if (msg.state) urlList.value[msg.id].state = msg.state;
+          else if (msg.event) measurementData.addMeasurementPoint(msg);
+          else if (msg.iteration)
+            urlList.value[msg.id].iteration = msg.iteration;
+        }
       }
     };
 
@@ -210,6 +222,25 @@ export default {
           id,
           name: url,
           value: url,
+        })),
+      );
+    };
+
+    const restoreSettings = (settings) => {
+      settings.value = settings;
+    };
+
+    const restoreUrlListState = (stateList) => {
+      console.log(stateList);
+      urlList.value.slice(0);
+      urlList.value.push(
+        ...stateList.map((url) => ({
+          id: url.id,
+          name: url.url,
+          value: url.url,
+          state: url.state,
+          iteration: url.iteration,
+          total: url.repeat,
         })),
       );
     };
@@ -284,7 +315,7 @@ export default {
       } else if (isRunning)
         intervalId = setInterval(() => {
           updateAll();
-        }, UPDATE_INTERVAL);
+        }, UPDATE_INTERVAL_MS);
     });
 
     return {

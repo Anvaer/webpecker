@@ -1,5 +1,7 @@
 package com.github.anvaer.webpecker.websocket;
 
+import java.io.IOException;
+import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
@@ -43,6 +45,11 @@ public final class WebSocketHelper {
     addToBuffer(session, message(id, state));
   }
 
+  public static void restoreState(
+      WebSocketSession session, String statesList) {
+    addToBuffer(session, statesList);
+  }
+
   public static void updateIteration(
       WebSocketSession session,
       int id,
@@ -63,8 +70,9 @@ public final class WebSocketHelper {
   private static void addToBuffer(WebSocketSession session, String msg) {
     eventBuffer.add(msg);
 
-    if (wsSession == null)
+    if (wsSession == null || !wsSession.isOpen()) {
       wsSession = session;
+    }
 
     if (eventBuffer.size() >= MAX_BATCH_SIZE)
       flushEvents();

@@ -26,7 +26,6 @@ public class RequestLoopTaskController extends TextWebSocketHandler {
   @Override
   protected void handleTextMessage(WebSocketSession session, TextMessage message) {
     httpClient.addWebSocketSession(session);
-
     try {
       WebSocketRequest req = mapper.readValue(message.getPayload(), WebSocketRequest.class);
       handleRequest(session, req);
@@ -39,6 +38,10 @@ public class RequestLoopTaskController extends TextWebSocketHandler {
     switch (req.getAction()) {
       case "reset-http-client":
         httpClient.resetClient();
+        break;
+      case "restore-state":
+        taskManager.restoreState(session);
+        taskManager.restoreSettings(session);
         break;
       case "send-request":
         taskManager.submitRequest(req, session);

@@ -31,6 +31,8 @@ public class HttpClientEventListener extends EventListener {
   }
 
   private void sendEvent(String name, Call call) {
+    if (callStartTime.get(call) == null)
+      return;
     long nowMils = System.currentTimeMillis();
     long elapsedMils = nowMils - callStartTime.get(call);
 

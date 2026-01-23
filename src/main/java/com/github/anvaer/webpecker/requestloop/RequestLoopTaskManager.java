@@ -1,16 +1,22 @@
 package com.github.anvaer.webpecker.requestloop;
 
+import java.util.List;
 import java.util.concurrent.*;
 
 import org.springframework.web.socket.WebSocketSession;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.anvaer.webpecker.httpclient.HttpClient;
+import com.github.anvaer.webpecker.websocket.WebSocketHelper;
 import com.github.anvaer.webpecker.websocket.WebSocketRequest;
 
 public class RequestLoopTaskManager {
 
-  private int maxConcurrent = 1;
-  private long delay = 0;
+  private int maxConcurrent = 3;
+  private long delay = 100;
+  private long timeout = 600;
+  private int repeat = 1000;
   private final ThreadPoolExecutor executor;
   private final ConcurrentHashMap<Integer, Future<?>> futures = new ConcurrentHashMap<>();
   private final ConcurrentHashMap<Integer, RequestLoopTask> tasks = new ConcurrentHashMap<>();
@@ -36,8 +42,26 @@ public class RequestLoopTaskManager {
         req.getUrl(),
         session,
         httpClient);
+    repeat = req.getRepeat();
     tasks.put(req.getId(), task);
     futures.put(req.getId(), executor.submit(task));
+  }
+
+  public void restoreState(WebSocketSession session) {
+    List<RequestLoopTaskState> statesList = tasks.values().stream().map(task -> task.getState()).toList();
+    ObjectMapper om = new ObjectMapper();
+    try {
+      String state = om.writeValueAsString(statesList);
+      WebSocketHelper.restoreState(session, state);
+    } catch (JsonProcessingException e) {
+      System.out.println("Failed to parse JSON: " + e.getMessage());
+    }
+  }
+
+  public void restoreSettings(WebSocketSession session) {
+    String configs = "{\"delay\":%d,\"maxConcurrent\":%d,\"timeout\":%d,\"repeat\":%d}"
+        .formatted(delay, maxConcurrent, timeout, repeat);
+    WebSocketHelper.restoreState(session, configs);
   }
 
   public void cancelRequest(Integer id) {
@@ -75,7 +99,8 @@ public class RequestLoopTaskManager {
     }
 
     if (req.getTimeout() != null) {
-      httpClient.changeTimeout(req.getTimeout());
+      timeout = req.getTimeout();
+      httpClient.changeTimeout(timeout);
     }
   }
 
