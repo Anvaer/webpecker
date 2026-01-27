@@ -155,8 +155,10 @@ export default {
         if (msg.maxConcurrent) restoreSettings(msg);
         else if (Array.isArray(msg)) restoreUrlListState(msg);
         else if (urlList.value?.length > 0) {
-          if (msg.state) urlList.value[msg.id].state = msg.state;
-          else if (msg.event) measurementData.addMeasurementPoint(msg);
+          if (msg.state) {
+            const changedUrl = urlList.value.find((url) => url.id === msg.id);
+            if (changedUrl) changedUrl.state = msg.state;
+          } else if (msg.event) measurementData.addMeasurementPoint(msg);
           else if (msg.iteration)
             urlList.value[msg.id].iteration = msg.iteration;
         }
