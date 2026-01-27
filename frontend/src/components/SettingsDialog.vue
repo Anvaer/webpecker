@@ -67,7 +67,7 @@ import {
   InputGroupAddon,
   InputNumber,
 } from "primevue";
-import { ref } from "vue";
+import { ref, watch, toRefs } from "vue";
 
 export default {
   name: "SettingsDialog",
@@ -95,6 +95,13 @@ export default {
   },
   setup(props) {
     const localSettings = ref(props.settings);
+    const settings = toRefs(props).settings;
+
+    watch(
+      settings,
+      (newSettings) => (localSettings.value = { ...newSettings }),
+    );
+
     return { localSettings };
   },
 };

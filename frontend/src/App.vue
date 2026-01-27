@@ -129,12 +129,7 @@ export default {
 
     const urlList = ref([]);
 
-    const settings = ref({
-      repeat: 1000,
-      delay: 10,
-      timeout: 600,
-      maxConcurrent: 3,
-    });
+    const settings = ref({});
 
     const selectedUrl = ref(null);
     const tableData = ref([]);
@@ -149,14 +144,6 @@ export default {
             action: "restore-state",
           }),
         );
-        // sendMessage(
-        //   JSON.stringify({
-        //     action: "update-config",
-        //     maxConcurrent: settings.value.maxConcurrent,
-        //     timeout: settings.value.timeout,
-        //     delay: settings.value.delay,
-        //   }),
-        // );
       },
     });
 
@@ -165,7 +152,6 @@ export default {
     const msgListner = (m) => {
       const msgs = JSON.parse(m.data);
       for (let msg of msgs) {
-        // array in msg only exists for restore state
         if (msg.maxConcurrent) restoreSettings(msg);
         else if (Array.isArray(msg)) restoreUrlListState(msg);
         else if (urlList.value?.length > 0) {
@@ -226,13 +212,12 @@ export default {
       );
     };
 
-    const restoreSettings = (settings) => {
-      settings.value = settings;
-    };
+    const restoreSettings = (newSettings) =>
+      (settings.value = { ...newSettings });
 
     const restoreUrlListState = (stateList) => {
       console.log(stateList);
-      urlList.value.slice(0);
+      urlList.value.splice(0);
       urlList.value.push(
         ...stateList.map((url) => ({
           id: url.id,
