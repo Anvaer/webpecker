@@ -5,6 +5,7 @@ import java.io.InterruptedIOException;
 import java.net.SocketTimeoutException;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.springframework.web.socket.WebSocketSession;
 
@@ -25,8 +26,8 @@ public class RequestLoopTask implements Callable<Void> {
   private final WebSocketSession webSocketSession;
   private final HttpClient httpClient;
 
-  private boolean cancelled = false;
-  private Call call;
+  private AtomicBoolean cancelled = new AtomicBoolean(false);
+  private volatile Call call;
 
   public RequestLoopTask(
       Integer id,
@@ -60,7 +61,7 @@ public class RequestLoopTask implements Callable<Void> {
         resp.close();
         registerIterationResult(String.valueOf(resp.code()));
       } catch (IOException e) {
-        if (cancelled) {
+        if (cancelled.get() == true) {
           updateState("cancelled");
           return null;
         } else if (e instanceof SocketTimeoutException) {
@@ -71,7 +72,7 @@ public class RequestLoopTask implements Callable<Void> {
           registerIterationResult("network error");
         }
       }
-      if (!cancelled && !Thread.currentThread().isInterrupted() && delay > 0) {
+      if (cancelled.get() == false && !Thread.currentThread().isInterrupted() && delay > 0) {
         try {
           Thread.sleep(delay);
         } catch (InterruptedException e) {
@@ -103,7 +104,7 @@ public class RequestLoopTask implements Callable<Void> {
   }
 
   public void cancelCall() {
-    cancelled = true;
+    cancelled.set(true);
     if (call != null)
       call.cancel();
   }
