@@ -1,7 +1,8 @@
 package com.github.anvaer.webpecker.requestloop;
 
 import org.springframework.context.ApplicationContext;
-import org.springframework.stereotype.Controller;
+import org.springframework.stereotype.Component;
+import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
@@ -11,7 +12,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.anvaer.webpecker.httpclient.HttpClient;
 import com.github.anvaer.webpecker.websocket.WebSocketRequest;
 
-@Controller
+import jakarta.annotation.PreDestroy;
+
+@Component
 public class RequestLoopTaskController extends TextWebSocketHandler {
 
   private final HttpClient httpClient;
@@ -24,8 +27,12 @@ public class RequestLoopTaskController extends TextWebSocketHandler {
   }
 
   @Override
-  protected void handleTextMessage(WebSocketSession session, TextMessage message) {
+  public void afterConnectionEstablished(WebSocketSession session) {
     httpClient.addWebSocketSession(session);
+  }
+
+  @Override
+  protected void handleTextMessage(WebSocketSession session, TextMessage message) {
     try {
       WebSocketRequest req = mapper.readValue(message.getPayload(), WebSocketRequest.class);
       handleRequest(session, req);
@@ -58,7 +65,14 @@ public class RequestLoopTaskController extends TextWebSocketHandler {
   }
 
   @Override
-  protected void finalize() throws Throwable {
+  public void afterConnectionClosed(
+      WebSocketSession session,
+      CloseStatus status) {
+    httpClient.removeWebSocketSession();
+  }
+
+  @PreDestroy
+  protected void preDestroy() {
     taskManager.shutdown();
   }
 }
