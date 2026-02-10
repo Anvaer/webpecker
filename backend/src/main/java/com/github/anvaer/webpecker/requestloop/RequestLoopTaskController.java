@@ -6,6 +6,8 @@ import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,6 +18,8 @@ import jakarta.annotation.PreDestroy;
 
 @Component
 public class RequestLoopTaskController extends TextWebSocketHandler {
+
+  private static final Logger log = LoggerFactory.getLogger(RequestLoopTaskController.class);
 
   private final HttpClient httpClient;
   private final RequestLoopTaskManager taskManager;
@@ -37,7 +41,7 @@ public class RequestLoopTaskController extends TextWebSocketHandler {
       WebSocketRequest req = mapper.readValue(message.getPayload(), WebSocketRequest.class);
       handleRequest(session, req);
     } catch (JsonProcessingException e) {
-      System.out.println("Failed to parse JSON: " + e.getMessage());
+      log.warn("Failed to parse JSON message.", e);
     }
   }
 
@@ -60,7 +64,7 @@ public class RequestLoopTaskController extends TextWebSocketHandler {
         taskManager.updateConfig(req);
         break;
       default:
-        System.out.println("Unknown action: " + req.getAction());
+        log.warn("Unknown action: {}", req.getAction());
     }
   }
 

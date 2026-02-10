@@ -26,7 +26,7 @@ public class RequestLoopTask implements Callable<Void> {
   private final WebSocketSession webSocketSession;
   private final HttpClient httpClient;
 
-  private AtomicBoolean cancelled = new AtomicBoolean(false);
+  private final AtomicBoolean cancelled = new AtomicBoolean(false);
   private volatile Call call;
 
   public RequestLoopTask(
@@ -61,7 +61,7 @@ public class RequestLoopTask implements Callable<Void> {
         resp.close();
         registerIterationResult(String.valueOf(resp.code()));
       } catch (IOException e) {
-        if (cancelled.get() == true) {
+        if (cancelled.get()) {
           updateState("cancelled");
           return null;
         } else if (e instanceof SocketTimeoutException) {
@@ -72,7 +72,7 @@ public class RequestLoopTask implements Callable<Void> {
           registerIterationResult("network error");
         }
       }
-      if (cancelled.get() == false && !Thread.currentThread().isInterrupted() && delay > 0) {
+      if (!cancelled.get() && !Thread.currentThread().isInterrupted() && delay > 0) {
         try {
           Thread.sleep(delay);
         } catch (InterruptedException e) {

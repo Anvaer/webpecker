@@ -1,6 +1,5 @@
 package com.github.anvaer.webpecker.httpclient;
 
-import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -15,9 +14,9 @@ import okhttp3.Request;
 @Service
 public class HttpClient {
 
-  private AtomicReference<OkHttpClient> okHttpClient = new AtomicReference<>();
+  private final AtomicReference<OkHttpClient> okHttpClient = new AtomicReference<>();
 
-  private volatile WebSocketSession webSocketSession = null;
+  private volatile WebSocketSession webSocketSession;
 
   @Autowired
   public HttpClient(OkHttpClient okHttpClient) {
@@ -49,8 +48,7 @@ public class HttpClient {
     okHttpClient.get().connectionPool().evictAll();
   }
 
-  public Call getRequest(String url, String requestTag)
-      throws IOException {
+  public Call getRequest(String url, String requestTag) {
     Request request = new Request.Builder()
         .tag(String.class, requestTag)
         .get()

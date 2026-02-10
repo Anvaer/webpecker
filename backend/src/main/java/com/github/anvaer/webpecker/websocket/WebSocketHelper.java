@@ -4,16 +4,18 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 public final class WebSocketHelper {
 
-  private static final AtomicInteger QUEUE_SIZE = new AtomicInteger();
+  private static final Logger log = LoggerFactory.getLogger(WebSocketHelper.class);
   private static final ExecutorService WS_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
     Thread t = new Thread(r, "ws-sender");
     t.setDaemon(true);
@@ -24,9 +26,10 @@ public final class WebSocketHelper {
   private static final long FLUSH_INTERVAL_MS = 100;
   private static final Queue<String> eventBuffer = new ConcurrentLinkedQueue<>();
   private static WebSocketSession wsSession;
+  private static final ScheduledExecutorService FLUSH_SCHEDULER = Executors.newSingleThreadScheduledExecutor();
 
   static {
-    Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(
+    FLUSH_SCHEDULER.scheduleAtFixedRate(
         WebSocketHelper::flushEvents,
         FLUSH_INTERVAL_MS,
         FLUSH_INTERVAL_MS,
@@ -77,7 +80,7 @@ public final class WebSocketHelper {
   }
 
   private static void flushEvents() {
-    if (eventBuffer.size() == 0 || wsSession == null || !wsSession.isOpen())
+    if (eventBuffer.isEmpty() || wsSession == null || !wsSession.isOpen())
       return;
     String batch = null;
     synchronized (eventBuffer) {
@@ -88,16 +91,14 @@ public final class WebSocketHelper {
   }
 
   private static void enqueue(WebSocketSession session, String payload) {
-    QUEUE_SIZE.incrementAndGet();
     WS_EXECUTOR.execute(() -> {
       try {
         if (session.isOpen()) {
           session.sendMessage(new TextMessage(payload));
         }
       } catch (Exception e) {
-        System.out.println("WS send failed: " + e);
+        log.warn("WebSocket send failed.", e);
       } finally {
-        QUEUE_SIZE.decrementAndGet();
       }
     });
   }

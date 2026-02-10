@@ -3,6 +3,8 @@ package com.github.anvaer.webpecker.requestloop;
 import java.util.List;
 import java.util.concurrent.*;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.socket.WebSocketSession;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -12,6 +14,8 @@ import com.github.anvaer.webpecker.websocket.WebSocketHelper;
 import com.github.anvaer.webpecker.websocket.WebSocketRequest;
 
 public class RequestLoopTaskManager {
+
+  private static final Logger log = LoggerFactory.getLogger(RequestLoopTaskManager.class);
 
   private int maxConcurrent = 3;
   private long delay = 100;
@@ -42,7 +46,9 @@ public class RequestLoopTaskManager {
         req.getUrl(),
         session,
         httpClient);
-    repeat = req.getRepeat();
+    if (req.getRepeat() != null) {
+      repeat = req.getRepeat();
+    }
     tasks.put(req.getId(), task);
     futures.put(req.getId(), executor.submit(task));
   }
@@ -54,7 +60,7 @@ public class RequestLoopTaskManager {
       String state = om.writeValueAsString(statesList);
       WebSocketHelper.restoreState(session, state);
     } catch (JsonProcessingException e) {
-      System.out.println("Failed to parse JSON: " + e.getMessage());
+      log.warn("Failed to serialize state list.", e);
     }
   }
 
