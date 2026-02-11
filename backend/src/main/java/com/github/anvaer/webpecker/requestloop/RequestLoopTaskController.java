@@ -1,6 +1,5 @@
 package com.github.anvaer.webpecker.requestloop;
 
-import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -12,9 +11,9 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.anvaer.webpecker.httpclient.HttpClient;
+import com.github.anvaer.webpecker.websocket.WebSocketEventPublisher;
 import com.github.anvaer.webpecker.websocket.WebSocketRequest;
 
-import jakarta.annotation.PreDestroy;
 
 @Component
 public class RequestLoopTaskController extends TextWebSocketHandler {
@@ -23,16 +22,23 @@ public class RequestLoopTaskController extends TextWebSocketHandler {
 
   private final HttpClient httpClient;
   private final RequestLoopTaskManager taskManager;
-  private final ObjectMapper mapper = new ObjectMapper();
+  private final WebSocketEventPublisher publisher;
+  private final ObjectMapper mapper;
 
-  public RequestLoopTaskController(ApplicationContext context) {
-    this.httpClient = context.getBean(HttpClient.class);
-    this.taskManager = new RequestLoopTaskManager(httpClient);
+  public RequestLoopTaskController(HttpClient httpClient,
+      RequestLoopTaskManager taskManager,
+      WebSocketEventPublisher publisher,
+      ObjectMapper mapper) {
+    this.httpClient = httpClient;
+    this.taskManager = taskManager;
+    this.publisher = publisher;
+    this.mapper = mapper;
   }
 
   @Override
   public void afterConnectionEstablished(WebSocketSession session) {
     httpClient.addWebSocketSession(session);
+    publisher.registerSession(session);
   }
 
   @Override
@@ -73,10 +79,7 @@ public class RequestLoopTaskController extends TextWebSocketHandler {
       WebSocketSession session,
       CloseStatus status) {
     httpClient.removeWebSocketSession();
+    publisher.clearSession(session);
   }
 
-  @PreDestroy
-  protected void preDestroy() {
-    taskManager.shutdown();
-  }
 }

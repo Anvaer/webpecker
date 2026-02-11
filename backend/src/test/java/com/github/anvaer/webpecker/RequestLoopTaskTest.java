@@ -13,13 +13,12 @@ import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.socket.WebSocketSession;
 
 import com.github.anvaer.webpecker.httpclient.HttpClient;
 import com.github.anvaer.webpecker.requestloop.RequestLoopTask;
-import com.github.anvaer.webpecker.websocket.WebSocketHelper;
+import com.github.anvaer.webpecker.websocket.WebSocketEventPublisher;
 
 import okhttp3.Call;
 import okhttp3.Response;
@@ -32,6 +31,9 @@ class RequestLoopTaskTest {
 
   @Mock
   WebSocketSession session;
+
+  @Mock
+  WebSocketEventPublisher publisher;
 
   @Mock
   Call call;
@@ -49,20 +51,18 @@ class RequestLoopTaskTest {
     when(call.execute()).thenReturn(response);
     when(response.code()).thenReturn(200);
 
-    try (var wsMock = mockStatic(WebSocketHelper.class)) {
-      RequestLoopTask task = new RequestLoopTask(
-          1, 0, 2, "http://example.com", session, httpClient);
+    RequestLoopTask task = new RequestLoopTask(
+        1, 0, 2, "http://example.com", session, httpClient, publisher);
 
-      task.call();
+    task.call();
 
-      // verify two iterations
-      wsMock.verify(() -> WebSocketHelper.updateIteration(session, 1, 1, "200"));
-      wsMock.verify(() -> WebSocketHelper.updateIteration(session, 1, 2, "200"));
+    // verify two iterations
+    verify(publisher).updateIteration(session, 1, 1, "200");
+    verify(publisher).updateIteration(session, 1, 2, "200");
 
-      // verify state transitions
-      wsMock.verify(() -> WebSocketHelper.updateState(session, 1, "running"));
-      wsMock.verify(() -> WebSocketHelper.updateState(session, 1, "done"));
-    }
+    // verify state transitions
+    verify(publisher).updateState(session, 1, "running");
+    verify(publisher).updateState(session, 1, "done");
 
     verify(response, times(2)).close();
   }
@@ -76,16 +76,14 @@ class RequestLoopTaskTest {
     when(httpClient.getRequest(anyString(), anyString())).thenReturn(call);
     when(call.execute()).thenThrow(new SocketTimeoutException());
 
-    try (var wsMock = mockStatic(WebSocketHelper.class)) {
-      RequestLoopTask task = new RequestLoopTask(
-          2, 0, 1, "http://example.com", session, httpClient);
+    RequestLoopTask task = new RequestLoopTask(
+        2, 0, 1, "http://example.com", session, httpClient, publisher);
 
-      task.call();
+    task.call();
 
-      wsMock.verify(() -> WebSocketHelper.updateIteration(
-          session, 2, 1, "timeout:connect/read"));
-      wsMock.verify(() -> WebSocketHelper.updateState(session, 2, "done"));
-    }
+    verify(publisher).updateIteration(
+        session, 2, 1, "timeout:connect/read");
+    verify(publisher).updateState(session, 2, "done");
   }
 
   // -------------------------
@@ -97,15 +95,13 @@ class RequestLoopTaskTest {
     when(httpClient.getRequest(anyString(), anyString())).thenReturn(call);
     when(call.execute()).thenThrow(new IOException("boom"));
 
-    try (var wsMock = mockStatic(WebSocketHelper.class)) {
-      RequestLoopTask task = new RequestLoopTask(
-          3, 0, 1, "http://example.com", session, httpClient);
+    RequestLoopTask task = new RequestLoopTask(
+        3, 0, 1, "http://example.com", session, httpClient, publisher);
 
-      task.call();
+    task.call();
 
-      wsMock.verify(() -> WebSocketHelper.updateIteration(
-          session, 3, 1, "network error"));
-    }
+    verify(publisher).updateIteration(
+        session, 3, 1, "network error");
   }
 
   // -------------------------
@@ -122,19 +118,17 @@ class RequestLoopTaskTest {
 
     ExecutorService executor = Executors.newSingleThreadExecutor();
     RequestLoopTask task = new RequestLoopTask(
-        4, 10, 10, "http://example.com", session, httpClient);
+        4, 10, 10, "http://example.com", session, httpClient, publisher);
 
-    try (MockedStatic<WebSocketHelper> wsMock = mockStatic(WebSocketHelper.class)) {
-      Future<Void> future = executor.submit(task);
+    Future<Void> future = executor.submit(task);
 
-      Thread.sleep(50);
+    Thread.sleep(50);
 
-      task.cancelCall();
-      verify(call).cancel();
+    task.cancelCall();
+    verify(call).cancel();
 
-      future.get();
-      executor.shutdown();
-    }
+    future.get();
+    executor.shutdown();
   }
 
   @Test
@@ -142,14 +136,12 @@ class RequestLoopTaskTest {
     when(httpClient.getRequest(anyString(), anyString())).thenReturn(call);
     when(call.execute()).thenThrow(new IOException("cancelled"));
 
-    try (MockedStatic<WebSocketHelper> wsMock = mockStatic(WebSocketHelper.class)) {
-      RequestLoopTask task = new RequestLoopTask(
-          4, 10, 10, "http://example.com", session, httpClient);
+    RequestLoopTask task = new RequestLoopTask(
+        4, 10, 10, "http://example.com", session, httpClient, publisher);
 
-      task.cancelCall();
-      task.call();
-      wsMock.verify(() -> WebSocketHelper.updateState(session, 4, "cancelled"));
-    }
+    task.cancelCall();
+    task.call();
+    verify(publisher).updateState(session, 4, "cancelled");
   }
 
   // -------------------------
@@ -165,14 +157,12 @@ class RequestLoopTaskTest {
     });
     when(response.code()).thenReturn(200);
 
-    try (var wsMock = mockStatic(WebSocketHelper.class)) {
-      RequestLoopTask task = new RequestLoopTask(
-          5, 10, 10, "http://example.com", session, httpClient);
+    RequestLoopTask task = new RequestLoopTask(
+        5, 10, 10, "http://example.com", session, httpClient, publisher);
 
-      task.call();
+    task.call();
 
-      wsMock.verify(() -> WebSocketHelper.updateState(session, 5, "cancelled"));
-    }
+    verify(publisher).updateState(session, 5, "cancelled");
   }
 
   // -------------------------
@@ -182,7 +172,7 @@ class RequestLoopTaskTest {
   @Test
   void getState_returnsCorrectSnapshot() {
     RequestLoopTask task = new RequestLoopTask(
-        6, 100, 3, "http://example.com", session, httpClient);
+        6, 100, 3, "http://example.com", session, httpClient, publisher);
 
     var state = task.getState();
 

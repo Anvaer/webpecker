@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.web.socket.WebSocketSession;
 
 import com.github.anvaer.webpecker.httpclient.HttpClient;
-import com.github.anvaer.webpecker.websocket.WebSocketHelper;
+import com.github.anvaer.webpecker.websocket.WebSocketEventPublisher;
 
 import okhttp3.Call;
 import okhttp3.Response;
@@ -25,6 +25,7 @@ public class RequestLoopTask implements Callable<Void> {
   private String state;
   private final WebSocketSession webSocketSession;
   private final HttpClient httpClient;
+  private final WebSocketEventPublisher publisher;
 
   private final AtomicBoolean cancelled = new AtomicBoolean(false);
   private volatile Call call;
@@ -35,7 +36,8 @@ public class RequestLoopTask implements Callable<Void> {
       Integer repeat,
       String url,
       WebSocketSession webSocketSession,
-      HttpClient httpClient) {
+      HttpClient httpClient,
+      WebSocketEventPublisher publisher) {
     this.id = id;
     this.delay = delay;
     this.currentIteration = 0;
@@ -44,6 +46,7 @@ public class RequestLoopTask implements Callable<Void> {
     this.state = "Not started";
     this.webSocketSession = webSocketSession;
     this.httpClient = httpClient;
+    this.publisher = publisher;
   }
 
   @Override
@@ -88,11 +91,11 @@ public class RequestLoopTask implements Callable<Void> {
 
   private void updateState(String state) {
     this.state = state;
-    WebSocketHelper.updateState(webSocketSession, id, this.state);
+    publisher.updateState(webSocketSession, id, this.state);
   }
 
   private void registerIterationResult(String result) {
-    WebSocketHelper.updateIteration(webSocketSession, id, currentIteration, result);
+    publisher.updateIteration(webSocketSession, id, currentIteration, result);
   }
 
   public void setDelay(long delay) {

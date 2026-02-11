@@ -7,6 +7,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.socket.WebSocketSession;
 
+import com.github.anvaer.webpecker.websocket.WebSocketEventPublisher;
+
 import okhttp3.Call;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -15,12 +17,14 @@ import okhttp3.Request;
 public class HttpClient {
 
   private final AtomicReference<OkHttpClient> okHttpClient = new AtomicReference<>();
+  private final WebSocketEventPublisher publisher;
 
   private volatile WebSocketSession webSocketSession;
 
   @Autowired
-  public HttpClient(OkHttpClient okHttpClient) {
+  public HttpClient(OkHttpClient okHttpClient, WebSocketEventPublisher publisher) {
     this.okHttpClient.set(okHttpClient.newBuilder().build());
+    this.publisher = publisher;
   }
 
   public void addWebSocketSession(WebSocketSession webSocketSession) {
@@ -29,7 +33,7 @@ public class HttpClient {
         return client;
       this.webSocketSession = webSocketSession;
       return client.newBuilder()
-          .eventListenerFactory(new HttpClientEventListener.Factory(webSocketSession))
+          .eventListenerFactory(new HttpClientEventListener.Factory(webSocketSession, publisher))
           .build();
     });
   }

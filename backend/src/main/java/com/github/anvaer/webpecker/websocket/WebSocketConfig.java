@@ -1,6 +1,5 @@
 package com.github.anvaer.webpecker.websocket;
 
-import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
@@ -13,16 +12,15 @@ import com.github.anvaer.webpecker.requestloop.RequestLoopTaskController;
 @EnableWebSocket
 public class WebSocketConfig implements WebSocketConfigurer {
 
-  private final ApplicationContext applicationContext;
+  private final RequestLoopTaskController controller;
 
-  public WebSocketConfig(ApplicationContext applicationContext) {
-    this.applicationContext = applicationContext;
+  public WebSocketConfig(RequestLoopTaskController controller) {
+    this.controller = controller;
   }
 
   @Override
   public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-    registry.addHandler(new RequestLoopTaskController(
-        applicationContext), "/req")
+    registry.addHandler(controller, "/req")
         .addInterceptors(new HttpSessionHandshakeInterceptor());
   }
 }

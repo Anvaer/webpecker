@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.web.socket.WebSocketSession;
 
-import com.github.anvaer.webpecker.websocket.WebSocketHelper;
+import com.github.anvaer.webpecker.websocket.WebSocketEventPublisher;
 
 import okhttp3.Call;
 import okhttp3.Connection;
@@ -25,19 +25,22 @@ public class HttpClientEventListener extends EventListener {
   private static final ConcurrentHashMap<Call, Long> callStartTime = new ConcurrentHashMap<>();
 
   private final WebSocketSession webSocketSession;
+  private final WebSocketEventPublisher publisher;
 
-  public HttpClientEventListener(WebSocketSession webSocketSession) {
+  public HttpClientEventListener(WebSocketSession webSocketSession, WebSocketEventPublisher publisher) {
     this.webSocketSession = webSocketSession;
+    this.publisher = publisher;
   }
 
   private void sendEvent(String name, Call call) {
-    if (callStartTime.get(call) == null)
+    Long startTime = callStartTime.get(call);
+    if (startTime == null)
       return;
     long nowMils = System.currentTimeMillis();
-    long elapsedMils = nowMils - callStartTime.get(call);
+    long elapsedMils = nowMils - startTime;
 
     String requestTag = call.request().tag(String.class);
-    WebSocketHelper.registerEvent(webSocketSession, requestTag, name, nowMils, elapsedMils);
+    publisher.registerEvent(webSocketSession, requestTag, name, nowMils, elapsedMils);
   }
 
   @Override
@@ -158,29 +161,34 @@ public class HttpClientEventListener extends EventListener {
   @Override
   public void callEnd(Call call) {
     sendEvent("callEnd", call);
+    callStartTime.remove(call);
   }
 
   @Override
   public void callFailed(Call call, IOException ioe) {
     sendEvent("callFailed", call);
+    callStartTime.remove(call);
   }
 
   @Override
   public void canceled(Call call) {
     sendEvent("canceled", call);
+    callStartTime.remove(call);
   }
 
   public static class Factory implements EventListener.Factory {
 
     private final WebSocketSession webSocketSession;
+    private final WebSocketEventPublisher publisher;
 
-    public Factory(WebSocketSession webSocketSession) {
+    public Factory(WebSocketSession webSocketSession, WebSocketEventPublisher publisher) {
       this.webSocketSession = webSocketSession;
+      this.publisher = publisher;
     }
 
     @Override
     public EventListener create(Call call) {
-      return new HttpClientEventListener(webSocketSession);
+      return new HttpClientEventListener(webSocketSession, publisher);
     }
   }
 }

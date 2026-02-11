@@ -10,9 +10,13 @@ import org.springframework.web.socket.WebSocketSession;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.anvaer.webpecker.httpclient.HttpClient;
-import com.github.anvaer.webpecker.websocket.WebSocketHelper;
+import com.github.anvaer.webpecker.websocket.WebSocketEventPublisher;
 import com.github.anvaer.webpecker.websocket.WebSocketRequest;
 
+import org.springframework.stereotype.Component;
+import jakarta.annotation.PreDestroy;
+
+@Component
 public class RequestLoopTaskManager {
 
   private static final Logger log = LoggerFactory.getLogger(RequestLoopTaskManager.class);
@@ -25,9 +29,13 @@ public class RequestLoopTaskManager {
   private final ConcurrentHashMap<Integer, Future<?>> futures = new ConcurrentHashMap<>();
   private final ConcurrentHashMap<Integer, RequestLoopTask> tasks = new ConcurrentHashMap<>();
   private final HttpClient httpClient;
+  private final WebSocketEventPublisher publisher;
+  private final ObjectMapper mapper;
 
-  public RequestLoopTaskManager(HttpClient httpClient) {
+  public RequestLoopTaskManager(HttpClient httpClient, WebSocketEventPublisher publisher, ObjectMapper mapper) {
     this.httpClient = httpClient;
+    this.publisher = publisher;
+    this.mapper = mapper;
     this.executor = new ThreadPoolExecutor(
         maxConcurrent,
         maxConcurrent,
@@ -45,7 +53,8 @@ public class RequestLoopTaskManager {
         req.getRepeat(),
         req.getUrl(),
         session,
-        httpClient);
+        httpClient,
+        publisher);
     if (req.getRepeat() != null) {
       repeat = req.getRepeat();
     }
@@ -55,10 +64,9 @@ public class RequestLoopTaskManager {
 
   public void restoreState(WebSocketSession session) {
     List<RequestLoopTaskState> statesList = tasks.values().stream().map(task -> task.getState()).toList();
-    ObjectMapper om = new ObjectMapper();
     try {
-      String state = om.writeValueAsString(statesList);
-      WebSocketHelper.restoreState(session, state);
+      String state = mapper.writeValueAsString(statesList);
+      publisher.restoreState(session, state);
     } catch (JsonProcessingException e) {
       log.warn("Failed to serialize state list.", e);
     }
@@ -67,7 +75,7 @@ public class RequestLoopTaskManager {
   public void restoreSettings(WebSocketSession session) {
     String configs = "{\"delay\":%d,\"maxConcurrent\":%d,\"timeout\":%d,\"repeat\":%d}"
         .formatted(delay, maxConcurrent, timeout, repeat);
-    WebSocketHelper.restoreState(session, configs);
+    publisher.restoreState(session, configs);
   }
 
   public void cancelRequest(Integer id) {
@@ -115,5 +123,10 @@ public class RequestLoopTaskManager {
       executor.shutdownNow();
     futures.clear();
     tasks.clear();
+  }
+
+  @PreDestroy
+  void onShutdown() {
+    shutdown();
   }
 }

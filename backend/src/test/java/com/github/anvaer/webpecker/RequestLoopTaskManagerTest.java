@@ -3,15 +3,14 @@ package com.github.anvaer.webpecker;
 import com.github.anvaer.webpecker.httpclient.HttpClient;
 import com.github.anvaer.webpecker.requestloop.RequestLoopTask;
 import com.github.anvaer.webpecker.requestloop.RequestLoopTaskManager;
-import com.github.anvaer.webpecker.websocket.WebSocketHelper;
+import com.github.anvaer.webpecker.websocket.WebSocketEventPublisher;
 import com.github.anvaer.webpecker.websocket.WebSocketRequest;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.*;
-import org.mockito.MockedStatic;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 
@@ -25,12 +24,14 @@ class RequestLoopTaskManagerTest {
   RequestLoopTaskManager manager;
   HttpClient httpClient;
   WebSocketSession session;
+  WebSocketEventPublisher publisher;
 
   @BeforeEach
   void setUp() {
     httpClient = mock(HttpClient.class);
     session = mock(WebSocketSession.class);
-    manager = new RequestLoopTaskManager(httpClient);
+    publisher = mock(WebSocketEventPublisher.class);
+    manager = new RequestLoopTaskManager(httpClient, publisher, new ObjectMapper());
 
     // setFieldVisible(manager, "futures");
     // setFieldVisible(manager, "tasks");
@@ -111,32 +112,23 @@ class RequestLoopTaskManagerTest {
   }
 
   @Test
-  void testRestoreSettings_callsWebSocketHelper() {
-    MockedStatic<WebSocketHelper> helperMock = mockStatic(WebSocketHelper.class);
-    try {
-      manager.restoreSettings(session);
+  void testRestoreSettings_callsPublisher() {
+    manager.restoreSettings(session);
 
-      helperMock.verify(() -> WebSocketHelper.restoreState(
-          eq(session),
-          anyString()));
-    } finally {
-      helperMock.close();
-    }
+    verify(publisher).restoreState(eq(session), anyString());
   }
 
   @Test
-  void testRestoreState_callsWebSocketHelper() throws Exception {
+  void testRestoreState_callsPublisher() throws Exception {
     WebSocketRequest req = mock(WebSocketRequest.class);
     when(req.getId()).thenReturn(1);
     when(req.getRepeat()).thenReturn(1);
     when(req.getUrl()).thenReturn("http://example.com");
     manager.submitRequest(req, session);
 
-    try (var helperMock = mockStatic(WebSocketHelper.class)) {
-      manager.restoreState(session);
+    manager.restoreState(session);
 
-      helperMock.verify(() -> WebSocketHelper.restoreState(eq(session), anyString()));
-    }
+    verify(publisher).restoreState(eq(session), anyString());
   }
 
   @Test
@@ -159,8 +151,10 @@ class RequestLoopTaskManagerTest {
     try {
       var field = RequestLoopTaskManager.class.getDeclaredField(fieldName);
       field.setAccessible(true);
-      return field;
+      return field.get(target);
     } catch (NoSuchFieldException e) {
+      throw new RuntimeException(e);
+    } catch (IllegalAccessException e) {
       throw new RuntimeException(e);
     }
   }
