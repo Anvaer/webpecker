@@ -44,14 +44,31 @@ tasks.register<Copy>("copyWebApp") {
   into(layout.buildDirectory.dir("resources/main/static"))
 }
 
-tasks.named<JavaCompile>("compileJava") {
+tasks.named("copyWebApp") {
   dependsOn(":frontend:npmBuild")
 }
 
 tasks.named<ProcessResources>("processResources") {
-  dependsOn("copyWebApp")
 }
 
 tasks.named<Test>("test") {
   useJUnitPlatform()
+}
+
+tasks.named("bootRun") {
+  dependsOn("copyWebApp")
+}
+
+tasks.named("bootJar") {
+  dependsOn("copyWebApp")
+}
+
+tasks.named("resolveMainClassName") {
+  dependsOn("copyWebApp")
+}
+
+tasks.register("backendTest") {
+  group = "verification"
+  description = "Runs backend tests without building the frontend."
+  dependsOn("test")
 }

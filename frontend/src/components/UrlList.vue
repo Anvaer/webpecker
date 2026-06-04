@@ -19,7 +19,7 @@
           <div class="flex-1 text-left" style="line-height: 21px">
             {{ item.option.iteration }} / {{ item.option.total }}
           </div>
-          <div class="flex-1 text-right font-weight-bold">
+          <div class="flex-1 text-right font-weight-bold mb-2">
             {{ item.option.state }}
             <Button
               v-if="item.option.state === 'running'"
